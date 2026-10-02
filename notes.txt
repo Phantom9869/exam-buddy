@@ -1,0 +1,308 @@
+OPERATING SYSTEM - UNIT 1
+
+=====================================================
+CHAPTER 1: INTRODUCTION
+=====================================================
+
+1.1 WHAT OPERATING SYSTEMS DO
+
+A computer system can be roughly divided into four components:
+1. Hardware
+2. Operating system
+3. Application programs
+4. Users
+
+Users (U1, U2, U3 ... Un) use system and application programs (assembler, compiler, database system). These run on top of the operating system, which runs on top of the hardware.
+
+- Hardware: CPU, I/O devices, memory.
+- Application programs: MS Office, browser, video player, etc.
+- Operating system: Windows, UNIX, Android, etc.
+
+The OS controls the hardware and coordinates its use among the various application programs for the various users. The OS provides a proper means for using computing resources.
+
+1.1.1 User View
+
+- Systems designed for one user to monopolize its resources: the OS is designed mostly for ease of use, with some attention paid to performance and none paid to resource utilization.
+- Users connected to mainframe systems or minicomputers: multiple users share the same resources and exchange information. The OS is designed to maximize resource utilization, so that each user gets their fair share of resources.
+- Users sit at workstations and share the network and servers: the OS is designed to compromise between individual usability and resource utilization.
+
+1.1.2 System View
+
+The OS is a program most intimately involved with the hardware. To the system, the OS is a resource allocator. It is also a control program that manages the execution of user programs to prevent errors and improper use of the computer.
+
+1.1.3 Defining Operating Systems
+
+Computers are present in toasters, cars, ships, spacecraft, homes, businesses, etc. They are the basis of game machines, music players, cable TV tuners, and industrial control systems. Computers evolved rapidly: they gained functionality and shrunk in size.
+
+The OS is a controller and allocator of resources while the computer is in operation.
+
+A more common definition, and the one we usually follow, is that the OS is the one program running at all times on the computer, usually called the kernel.
+
+Two other types of programs associated with the OS are system programs and application programs.
+
+Mobile operating systems often include not only a core kernel but also middleware. Middleware is a set of software frameworks that provide additional services to application developers. Example: Apple's iOS and Google's Android feature a core kernel along with middleware that supports databases, multimedia, and graphics.
+
+1.4 OPERATING SYSTEM STRUCTURE
+
+The OS provides an environment within which programs are executed.
+
+The most important aspect of an OS is its ability to multiprogram. A single program cannot keep either the CPU or the I/O devices busy at all times. Single users frequently have multiple programs running.
+
+Multiprogramming increases CPU utilization by organizing jobs (code and data) so that the CPU always has one to execute.
+
+Idea: the OS keeps several jobs in memory simultaneously. As main memory is too small to accommodate all jobs, the jobs are kept initially on the disk in the job pool. The job pool consists of all processes residing on disk awaiting allocation of main memory.
+
+Time sharing (multitasking) is a logical extension of multiprogramming. A time-sharing OS allows users to share the computer simultaneously. A time-shared OS uses CPU scheduling and multiprogramming to provide each user with a small portion of a time-shared computer.
+
+A program loaded into memory and executing is called a process.
+
+Related activities: job scheduling, CPU scheduling, and swapping. Swapping is used to ensure reasonable response time and to compensate for the shortage of physical memory (virtual memory).
+
+1.5 OPERATING SYSTEM OPERATIONS
+
+Modern operating systems are interrupt driven. That is, if there are no processes to execute, the OS sits idle waiting for something to happen. Events are always signaled by the occurrence of an interrupt or a trap.
+
+A trap (exception) is a software-generated interrupt caused either by an error (divide by zero, invalid memory access) or by a specific request from a user program that an OS service be performed.
+
+Dual-mode operation
+
+The dual mode of operation provides us with the means for protecting the OS from errant users, and errant users from one another.
+
+This is accomplished by designating some of the machine instructions that may cause harm as privileged instructions. Privileged instructions can be executed only in kernel mode. If one is tried in user mode, a trap is executed.
+
+The concept of modes can be extended beyond two modes (the CPU uses more than one bit to set and test the mode).
+
+Virtual machine managers and virtualization management software are in control of the system. This can be indicated by a separate mode bit. This mode may have higher privileges than that of a user, but lesser privileges compared to kernel mode. CPU designers may use other strategies to differentiate the operational privileges.
+
+The Intel 64 family of CPUs supports four privilege levels. It supports virtualization but does not provide any separate mode of operation for virtualization.
+
+System calls provide the means for a user program to ask the OS to perform tasks reserved for the operating system on the user program's behalf. Generally, system calls take the form of a trap.
+
+MS-DOS does not support dual-mode operation. Windows 7, UNIX, and Linux support this type of operation.
+
+1.5.2 Timer
+
+Timers are used to ensure that the OS maintains control over the CPU.
+- Fixed timer (for example 1/60 second)
+- Variable timer (1 millisecond to 1 second)
+
+Timer operation can be accomplished by using a fixed-rate clock and a counter. For each tick, the counter decrements. When the counter becomes zero, control comes back to kernel mode. We can use the timer to prevent a user program from running too long.
+
+1.6 PROCESS MANAGEMENT
+
+A program does nothing unless its instructions are executed by a CPU. A program in execution is called a process.
+
+A process needs certain resources like CPU, memory, files, and I/O devices to accomplish its task. These resources are either given at the time of its creation or allocated at the time of its execution.
+
+- A program itself is not a process.
+- A program is a passive entity.
+- A process is an active entity.
+
+A single-threaded process has one program counter specifying the next instruction to be executed. At any time, one instruction at most is executed on behalf of the process.
+
+A multithreaded process has multiple program counters, each pointing to the next instruction to execute for a given thread.
+
+A process is a unit of work in a system. A system consists of a collection of processes, some of which are OS processes and the rest are user processes. All the processes can potentially execute concurrently by multiplexing on a single CPU.
+
+The OS is responsible for the following activities in connection with process management:
+1. Scheduling processes and threads on the CPU.
+2. Creating and deleting both user and system processes.
+3. Suspending and resuming processes.
+4. Providing mechanisms for process synchronization.
+5. Providing mechanisms for process communication.
+
+1.7 MEMORY MANAGEMENT
+
+Main memory is a large array of bytes, ranging in size from hundreds of thousands to billions. Each byte has its own address.
+
+Main memory is the repository of quickly accessible data shared by the CPU and I/O devices.
+
+- Instruction-fetch cycle: the central processor reads instructions from main memory.
+- Data-fetch cycle: reads and writes data from main memory.
+
+The CPU is able to access main memory directly. For a program to be executed, it must be mapped to absolute addresses and loaded into memory.
+
+The operating system is responsible for the following activities in connection with memory management:
+1. Keeping track of which parts of memory are currently being used and by whom.
+2. Deciding which processes (or parts of processes) and data to move into and out of memory.
+3. Allocating and deallocating memory space as needed.
+
+1.8 STORAGE MANAGEMENT
+
+A file is a logical storage unit. The OS maps files into physical memory.
+
+1.8.1 File-System Management
+
+Computers can store information on several types of physical media: magnetic tape, magnetic disk, and optical disk. Each of these media has its own characteristics and organization. Each medium is controlled by a disk drive.
+
+A file is a collection of related information. A file represents programs and data.
+
+Activities concerned with the file system:
+1. Creating and deleting files.
+2. Creating and deleting directories.
+3. Supporting primitives to manipulate files and directories.
+4. Mapping files onto secondary storage.
+5. Backing up files on stable (non-volatile) storage media.
+
+1.8.2 Mass-Storage Management
+
+1. Free-space management
+2. Storage allocation
+3. Disk scheduling
+
+Tertiary storage devices include CD, DVD, pen drive, etc. This media varies between WORM (Write Once, Read Many times) and RW (Read-Write) formats.
+
+1.8.3 Caching
+
+Register -> Cache -> Main memory (MM) -> Secondary memory
+
+1.8.4 I/O System
+
+The I/O subsystem consists of several components:
+1. A memory-management component that includes buffering, caching, and spooling.
+2. A general device-driver interface.
+3. Drivers for specific hardware devices.
+
+1.9 PROTECTION AND SECURITY
+
+Protection: any mechanism for controlling access of processes or users to resources defined by the OS.
+
+Security: defense of the system against internal and external attacks. There is a huge range of attacks, including DoS (Denial of Service), worms, viruses, identity theft, and theft of service.
+
+The system first distinguishes who can do what among the users.
+- User ID (UID) includes a name and an associated number (User ID and Security ID (SID)).
+- The user ID is then associated with all files and processes of that user to determine access control.
+- Group ID allows a set of users to be defined.
+- Privilege escalation allows a user to change to an effective ID with more rights.
+
+=====================================================
+CHAPTER 2: SYSTEM STRUCTURE
+=====================================================
+
+2.1 OPERATING SYSTEM SERVICES
+
+Layers, from top to bottom: user and other system programs; user interface (GUI, batch, command line); system calls; services; operating system; hardware.
+
+Services provided: program execution, I/O operations, file system, communication, resource allocation, accounting, error detection, protection and security.
+
+(a) User interface:
+- GUI = Graphical User Interface
+- CLI = Command Line Interface
+- BI = Batch Interface
+
+In the batch interface, commands and the directives to control those commands are entered into files, and those files are executed.
+
+(b) Program execution
+(c) I/O operations
+(d) File-system manipulation
+(e) Communication
+(f) Error detection
+(g) Resource allocation
+(h) Accounting
+(i) Protection and security
+
+2.3 SYSTEM CALLS
+
+System calls provide an interface to the services available by an operating system. These calls are generally available as routines written in C and C++, though certain low-level tasks may have to be written using assembly languages.
+
+Example of how system calls are used to copy a source file to a destination file:
+- Acquire input file name (write prompt to screen, accept input)
+- Acquire output file name (write prompt to screen, accept input)
+- Open the input file (if file doesn't exist, abort)
+- Create output file (if file exists, abort)
+- Loop: read from input file, write to output file, until read fails
+- Close output file
+- Write completion message to screen
+- Terminate normally
+
+For most programming languages, the run-time support system provides a system-call interface that serves as the link to the system calls made available by the OS.
+
+Handling of a user application invoking the open() system call: the user application calls open(), which goes through the system call interface (crossing from user mode to kernel mode). The interface looks up the implementation of open() in a table indexed by system call number, runs it in the kernel, and returns the result to the user application.
+
+Passing parameters to the OS:
+- Parameters may be passed through registers.
+- If there are more parameters than available registers, the parameters are stored in a block or table of memory, and the address of the block/table is passed through a register.
+- The stack can also be used to pass the parameters.
+
+Example: the user program stores parameters in table X, loads the address of X into a register, and issues system call 13. The OS uses the parameters from table X in the code for system call 13.
+
+2.4 TYPES OF SYSTEM CALLS
+
+System calls can be grouped roughly into six major categories.
+
+2.4.1 Process control
+1. end, abort
+2. load, execute
+3. create process, terminate process
+4. get process attributes, set process attributes
+5. wait for time
+6. wait event, signal event
+7. allocate and free memory
+
+2.4.2 File management
+1. create file, delete file
+2. open, close
+3. read, write, reposition
+4. get file attributes, set file attributes
+
+2.4.3 Device management
+1. request device, release device
+2. read, write, reposition
+3. get device attributes, set device attributes
+4. logically attach or detach devices
+
+2.4.4 Information maintenance
+1. get time or date, set time or date
+2. get system data, set system data
+3. get process, file, or device attributes
+4. set process, file, or device attributes
+
+2.4.5 Communications
+1. create, delete communication connection
+2. send, receive messages
+3. transfer status information
+4. attach or detach remote devices
+
+2.4.6 Protection
+1. control access to resources
+2. protect one user from other (allow user, deny user)
+3. set permission, get permission
+
+2.5 SYSTEM PROGRAMS
+
+System programs are also known as system utilities. They provide a convenient environment for program development and execution. Some of them are simply user interfaces to system calls. The rest of the utilities are categorised as:
+1. File management
+2. Status information
+3. File modification
+4. Programming-language support
+5. Program loading and execution
+6. Communications
+7. Background services
+
+OPERATING SYSTEM STRUCTURE
+
+A system as large and complex as a modern OS must be carefully designed to function properly and be modified easily. The common approach to achieve this is to partition the task into small components or modules rather than have one monolithic system. Each of these modules should be a well-defined portion of the system, with carefully defined inputs, outputs, and functions. Then the components are interconnected and melded into a kernel.
+
+2.7.1 Simple Structure
+
+Some systems started as small, simple, and limited systems and then grew beyond their original scope.
+
+Example: MS-DOS. It was written to provide the most functionality in the least space, hence it was not carefully divided into modules.
+
+In MS-DOS, the interfaces and levels of functionality are not well separated. User application programs can directly access some routines of I/O operations. If a user program fails, the entire system crashes.
+
+MS-DOS does not support dual mode of operation, as it was developed for the 8088 architecture.
+
+MS-DOS layered architecture (top to bottom): application program, resident system program, MS-DOS device drivers, ROM BIOS device drivers. Application programs can bypass layers and reach lower levels directly.
+
+The original UNIX OS is also designed with the least importance given to structuring. The UNIX OS consists of two separable parts:
+1. Kernel
+2. System programs
+
+Traditional UNIX system structure (top to bottom):
+- The users
+- Shell and commands, compilers and interpreters, system libraries
+- System-call interface to the kernel
+- Kernel, which contains: signal handling, I/O system, drivers; file system, I/O system, disc and tape drivers; CPU scheduling, page replacement, demand paging, virtual memory
+- Kernel interface to the hardware
+- Hardware: terminal controllers, device controllers, memory controllers
