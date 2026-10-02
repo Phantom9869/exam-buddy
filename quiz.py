@@ -60,7 +60,7 @@ NOTES:
             print(f"  Bad JSON on attempt {attempt+1}: {e}, retrying...")
     raise RuntimeError("Gemma returned bad JSON 3 times. Try again.")
 
-notes = open("notes.txt", encoding="utf-8").read()
+notes = open("sample_notes.txt", encoding="utf-8").read()
 print("""
 When you get a question wrong, the app will explain the correct answer
 using a theme or world you're familiar with — so it actually sticks.
