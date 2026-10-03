@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <script>
+(function(){var t;try{t=localStorage.getItem("eb-theme")}catch(e){}
+if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+document.documentElement.dataset.theme=t;})();
+</script>
+  <title>Exam Buddy</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
+  <style>
+    :root{color-scheme:light;--paper:#EEF2F5;--ink:#15213B;--muted:#5B6780;--card:#FFFFFF;--line:#C5CEDB;
+      --hl:#FFE14D;--hl-bar:#FFE14D;--ok:#1B8A5A;--ok-bg:#E2F3EA;--bad:#C8374B;--bad-bg:#FBE5E8;
+      --grid:var(--grid);--track:rgba(21,33,59,.08);--btn-hover:#2A3B63;--opt-hover:#F6F8FB;--on-state:#fff}
+    :root[data-theme="dark"]{color-scheme:dark;--paper:#0F1520;--ink:#E7EBF3;--muted:#9AA5BC;--card:#182030;--line:#2D3A54;
+      --hl:rgba(255,225,77,.4);--ok:#43D690;--ok-bg:#12301F;--bad:#FF7285;--bad-bg:#37171E;
+      --grid:rgba(255,255,255,.045);--track:rgba(255,255,255,.1);--btn-hover:#FFFFFF;--opt-hover:#1E2940;--on-state:#0E1A14}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{
+      background-color:var(--paper);
+      background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+      background-size:28px 28px;transition:background-color .25s;
+      color:var(--ink);
+      font-family:'Bricolage Grotesque',system-ui,sans-serif;
+      font-size:16px;line-height:1.6;min-height:100vh;
+      display:flex;align-items:center;justify-content:center;
+      padding:max(32px,env(safe-area-inset-top)) 18px max(32px,env(safe-area-inset-bottom));
+    }
+    .screen{width:100%;max-width:600px;display:none}
+    .screen.active{display:block;animation:rise .35s ease}
+    :focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+
+    .wordmark{font-size:18px;font-weight:700;margin-bottom:34px}
+    .wordmark em{font-style:normal;background:linear-gradient(transparent 55%,var(--hl) 55%);padding:0 2px}
+    h1{font-size:40px;font-weight:700;line-height:1.1;margin-bottom:14px;letter-spacing:-.02em}
+    .sub{color:var(--muted);margin-bottom:34px;max-width:460px}
+
+    .field{margin-bottom:22px}
+    label{display:block;font-size:14px;font-weight:600;margin-bottom:7px}
+    textarea,input[type=text]{
+      width:100%;background:var(--card);border:1.5px solid var(--ink);border-radius:8px;
+      color:var(--ink);font-family:inherit;font-size:15px;padding:12px 14px;resize:vertical;
+    }
+    textarea{min-height:180px}
+    textarea::placeholder,input::placeholder{color:#8C97AB}
+    .hint{font-size:13px;color:var(--muted);margin-top:7px}
+    .hint b{color:var(--ink);font-weight:600}
+
+    .btn{
+      display:flex;align-items:center;justify-content:center;width:100%;padding:14px 22px;
+      background:var(--ink);color:var(--paper);border:1.5px solid var(--ink);border-radius:8px;
+      font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:background .15s;
+    }
+    .btn:hover:not(:disabled){background:var(--btn-hover)}
+    .btn:disabled{opacity:.4;cursor:not-allowed}
+    .btn.ghost{background:transparent;color:var(--ink);margin-top:10px}
+    .btn.ghost:hover:not(:disabled){background:var(--card)}
+
+    .err{margin-top:14px;padding:12px 14px;background:var(--bad-bg);border:1.5px solid var(--bad);
+      border-radius:8px;color:var(--bad);font-size:14px;font-weight:500;display:none}
+    .err.show{display:block}
+
+    .load-center{text-align:center;padding:90px 0}
+    .spinner{width:38px;height:38px;border:3px solid var(--line);border-top-color:var(--ink);
+      border-radius:50%;margin:0 auto 22px;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .load-label{color:var(--muted)}
+
+    /* highlighter-stroke progress */
+    .progress{height:12px;background:var(--track);border-radius:3px;overflow:hidden;margin-bottom:34px}
+    .progress-fill{height:100%;background:var(--hl-bar);border-radius:3px;transition:width .35s ease}
+
+    .q-num{font-size:14px;font-weight:500;color:var(--muted);margin-bottom:8px}
+    .q-text{font-size:23px;font-weight:600;line-height:1.35;margin-bottom:26px;letter-spacing:-.01em}
+
+    .options{display:flex;flex-direction:column;gap:10px}
+    .opt{
+      display:flex;align-items:flex-start;gap:14px;width:100%;
+      background:var(--card);border:1.5px solid var(--ink);border-radius:8px;
+      color:var(--ink);font-family:inherit;font-size:15px;line-height:1.5;
+      padding:13px 16px;text-align:left;cursor:pointer;transition:background .12s;
+    }
+    .opt:hover:not(:disabled){background:var(--opt-hover)}
+    .opt:disabled{cursor:default}
+    /* answer-sheet bubble */
+    .opt-ltr{
+      flex:none;width:26px;height:26px;border:1.5px solid var(--ink);border-radius:50%;
+      display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;
+    }
+    .opt.correct{background:var(--ok-bg);border-color:var(--ok)}
+    .opt.correct .opt-ltr{background:var(--ok);border-color:var(--ok);color:var(--on-state)}
+    .opt.wrong{background:var(--bad-bg);border-color:var(--bad)}
+    .opt.wrong .opt-ltr{background:var(--bad);border-color:var(--bad);color:var(--on-state)}
+
+    .exp-box{margin-top:20px;background:var(--card);border:1.5px solid var(--line);border-radius:8px;
+      padding:16px 18px;line-height:1.7;display:none}
+    .exp-box.show{display:block}
+    .exp-tag{display:inline-block;font-size:14px;font-weight:700;margin-bottom:8px;
+      background:linear-gradient(transparent 45%,var(--hl) 45%);padding:0 3px}
+    .exp-text{white-space:pre-wrap}
+
+    .next-btn{margin-top:22px;display:none}
+    .next-btn.show{display:flex}
+    .kb{margin-top:16px}
+
+    .big-score{font-size:84px;font-weight:700;line-height:1;margin-bottom:10px;letter-spacing:-.03em;
+      display:inline-block;background:linear-gradient(transparent 62%,var(--hl) 62%);padding:0 6px 0 2px}
+    .score-msg{color:var(--muted);margin:8px 0 36px;font-size:18px}
+    .breakdown{margin-bottom:30px;border-top:1.5px solid var(--ink)}
+    .r-row{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--line);font-size:15px}
+    .dot{width:10px;height:10px;border-radius:50%;margin-top:8px;flex:none}
+    .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+    .r-q{flex:1}
+
+    .theme-btn{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;z-index:5;width:40px;height:40px;
+      border-radius:50%;border:1.5px solid var(--ink);background:var(--card);color:var(--ink);
+      display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .25s}
+    .theme-btn:hover{transform:rotate(30deg)}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .chip{font-family:inherit;font-size:13px;font-weight:500;color:var(--ink);background:transparent;
+      border:1.5px solid var(--line);border-radius:99px;padding:3px 13px;cursor:pointer;transition:background .12s,border-color .12s}
+    .chip:hover{border-color:var(--ink)}
+    .chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+    @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @media (prefers-reduced-motion:reduce){*{transition:none!important}.screen.active{animation:none}.spinner{animation-duration:2s}}
+    @media (max-width:480px){h1{font-size:32px}.q-text{font-size:20px}}
+  </style>
+</head>
+<body>
+<button class="theme-btn" aria-label="Switch between light and dark theme" onclick="toggleTheme()">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>
+</button>
+
+<!-- SETUP -->
+<div id="s-setup" class="screen active">
+  <div class="wordmark">exam<em>buddy</em></div>
+  <h1>Quiz yourself on<br>your own notes.</h1>
+  <p class="sub">Paste what you're studying, pick how you like things explained, and get a 5-question quiz — all on your laptop, nothing sent anywhere.</p>
+
+  <div class="field">
+    <label for="i-notes">Your notes</label>
+    <textarea id="i-notes" placeholder="Paste your notes or textbook pages here…"></textarea>
+    <p class="hint"><span id="cnt">0</span> characters &middot; long notes are split into parts, one part per quiz. <b>Nothing leaves your device.</b></p>
+  </div>
+
+  <div class="field">
+    <label for="i-style">Explanation style</label>
+    <input type="text" id="i-style" placeholder="e.g. football, cooking, minecraft, gym, movies…" />
+    <div class="chips" id="chips"></div>
+    <p class="hint">When you get something wrong, the explanation uses this theme — so it actually sticks.</p>
+  </div>
+
+  <button class="btn" id="start-btn" onclick="startQuiz()">Generate my quiz</button>
+  <div class="err" id="setup-err"></div>
+</div>
+
+<!-- LOADING -->
+<div id="s-loading" class="screen">
+  <div class="load-center">
+    <div class="spinner"></div>
+    <p class="load-label" id="load-label">Generating your questions…<br>30–60 seconds on CPU, hang tight.</p>
+  </div>
+</div>
+
+<!-- QUIZ -->
+<div id="s-quiz" class="screen">
+  <div class="progress"><div class="progress-fill" id="prog"></div></div>
+  <div class="q-num"  id="q-num"></div>
+  <div class="q-text" id="q-text"></div>
+  <div class="options" id="opts"></div>
+  <p class="hint kb">Press A–D (or 1–4) to answer, Enter for next.</p>
+  <div class="exp-box" id="exp-box">
+    <div class="exp-tag" id="exp-tag"></div>
+    <div class="exp-text" id="exp-text"></div>
+  </div>
+  <button class="btn next-btn" id="next-btn" onclick="nextQ()">Next question</button>
+</div>
+
+<!-- RESULTS -->
+<div id="s-results" class="screen">
+  <div class="results-inner">
+    <div class="big-score" id="big-score"></div>
+    <p class="score-msg" id="score-msg"></p>
+    <div class="breakdown" id="breakdown"></div>
+    <button class="btn"   onclick="tryAgain()">Try again with new questions</button>
+    <button class="btn ghost" onclick="goSetup()">Change notes or style</button>
+  </div>
+</div>
+
+<script>
+const API_URL = "http://localhost:11434/api/chat";
+const MODEL = "gemma3:4b";
+const LTRS  = ["A","B","C","D"];
+
+let qs = [], qi = 0, sc = 0, log = [], notes = "", style = "";
+
+function toggleTheme() {
+  const n = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = n;
+  try { localStorage.setItem("eb-theme", n); } catch {}
+}
+
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById("s-" + id).classList.add("active");
+}
+
+async function chat(messages, asJson=false) {
+  const body = { model: MODEL, stream: false, messages };
+  if (asJson) body.format = "json";
+  let r;
+  try {
+    r = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    const err = new Error("Can't reach Ollama.");
+    err.unreachable = true;
+    throw err;
+  }
+  if (!r.ok) throw new Error("Ollama error " + r.status);
+  return (await r.json()).message.content;
+}
+
+async function stream(messages, onToken) {
+  const r = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, stream: true, messages })
+  });
+  if (!r.ok) throw new Error("Ollama error " + r.status);
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let full = "", buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines.filter(Boolean)) {
+      try {
+        const c = JSON.parse(line);
+        if (c.message?.content) { full += c.message.content; onToken(full); }
+      } catch {}
+    }
+  }
+}
+
+function cleanJson(t) {
+  t = t.replace(/```(?:json)?\s*/g,"").trim();
+  const m = t.match(/\{[\s\S]*\}/);
+  return m ? m[0] : t;
+}
+
+let part = { n: 1, total: 1 }, chunks = [], order = [], lastNotes = null;
+
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function makeChunks(t, max = 2800) {
+  const parts = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+  const out = []; let cur = "";
+  for (let x of parts) {
+    while (x.length > max) {
+      let cut = x.lastIndexOf(" ", max); if (cut < max / 2) cut = max;
+      if (cur) { out.push(cur); cur = ""; }
+      out.push(x.slice(0, cut)); x = x.slice(cut).trim();
+    }
+    if (cur && cur.length + x.length + 1 > max) { out.push(cur); cur = x; }
+    else cur = cur ? cur + "\n" + x : x;
+  }
+  if (cur) out.push(cur);
+  if (out.length > 1 && out[out.length - 1].length < 400) out[out.length - 2] += "\n" + out.pop();
+  return out;
+}
+
+function nextChunk() {
+  if (notes !== lastNotes) { chunks = makeChunks(notes); lastNotes = notes; order = []; }
+  if (!order.length) order = shuffle(chunks.map((_, i) => i));
+  const i = order.pop();
+  return { text: chunks[i], n: i + 1, total: chunks.length };
+}
+
+function cleanQs(list, ctx) {
+  if (!Array.isArray(list)) return [];
+  return list.map(q => {
+    if (!q || typeof q.q !== "string" || !Array.isArray(q.options)) return null;
+    const opts = q.options.slice(0, 4).map(o => String(o).replace(/^\s*[A-Da-d][).:]\s+/, "").trim());
+    const a = Number(q.answer);
+    if (opts.length < 4 || opts.some(o => o.length < 2) || !Number.isInteger(a) || a < 0 || a > 3) return null;
+    const idx = shuffle([0, 1, 2, 3]);
+    return { q: q.q, options: idx.map(i => opts[i]), answer: idx.indexOf(a), ctx };
+  }).filter(Boolean);
+}
+
+function setLoad(c) {
+  document.getElementById("load-label").innerHTML =
+    (c.total > 1 ? "Generating questions from part " + c.n + " of " + c.total + " of your notes&hellip;" : "Generating your questions&hellip;") +
+    "<br>30-60 seconds on CPU, hang tight.";
+}
+
+async function loadQuestions(n) {
+  const c = nextChunk(); const trimmed = c.text; setLoad(c);
+  const prompt = `Using ONLY these notes, write 5 multiple-choice questions.
+
+Return ONLY valid JSON in exactly this format:
+{"questions":[
+  {
+    "q": "What is the full question text?",
+    "options": [
+      "First full answer sentence",
+      "Second full answer sentence",
+      "Third full answer sentence",
+      "Fourth full answer sentence"
+    ],
+    "answer": 0
+  }
+]}
+
+Rules:
+- options must be complete sentences, never single letters like A/B/C/D
+- answer is the index (0-3) of the correct option
+- base every question strictly on the notes below
+
+NOTES:
+${trimmed}`;
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      const raw = await chat([{ role:"user", content: prompt }], true);
+      const p = JSON.parse(cleanJson(raw));
+      const good = cleanQs(p.questions, c.text);
+      if (good.length >= 3) { part = { n: c.n, total: c.total }; return good; }
+    } catch(e) {
+      console.warn("attempt", i+1, e);
+      if (e.unreachable) throw e; // no point retrying a dead connection
+    }
+  }
+  throw new Error("Got responses from Ollama but couldn't parse valid questions after 3 tries. Try shortening your notes or picking a different section.");
+}
+
+async function startQuiz() {
+  notes = document.getElementById("i-notes").value.trim();
+  style = document.getElementById("i-style").value.trim();
+  const err = document.getElementById("setup-err");
+  err.classList.remove("show");
+
+  if (!notes) return showErr(err, "Paste some notes first.");
+  if (!style) return showErr(err, "Enter an explanation style.");
+
+  document.getElementById("start-btn").disabled = true;
+  show("loading");
+
+  try {
+    qs = await loadQuestions(notes);
+    qi = 0; sc = 0; log = [];
+    renderQ();
+    show("quiz");
+  } catch(e) {
+    show("setup");
+    document.getElementById("start-btn").disabled = false;
+    showErr(err, e.unreachable
+      ? "Can't reach Ollama. Make sure it's running, and that this page is opened via http://localhost (not a file:// path)."
+      : e.message);
+  }
+}
+
+function showErr(el, msg) { el.textContent = msg; el.classList.add("show"); }
+
+function renderQ() {
+  const q = qs[qi];
+  const pct = (qi / qs.length) * 100;
+  document.getElementById("prog").style.width = pct + "%";
+  document.getElementById("q-num").textContent  = "Question " + (qi+1) + " of " + qs.length + "  \u00b7  " + sc + " correct" + (part.total > 1 ? "  \u00b7  notes part " + part.n + "/" + part.total : "");
+  document.getElementById("q-text").textContent = q.q;
+
+  const ol = document.getElementById("opts");
+  ol.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    const l = document.createElement("span");
+    l.className = "opt-ltr"; l.textContent = LTRS[i];
+    const t = document.createElement("span");
+    t.textContent = opt;
+    b.append(l, t);
+    b.onclick = () => pick(i);
+    ol.appendChild(b);
+  });
+
+  document.getElementById("exp-box").classList.remove("show");
+  document.getElementById("exp-text").textContent = "";
+  document.getElementById("next-btn").classList.remove("show");
+}
+
+async function pick(i) {
+  const q = qs[qi];
+  const btns = document.querySelectorAll(".opt");
+  btns.forEach(b => b.disabled = true);
+
+  const right = q.answer;
+  btns[right].classList.add("correct");
+  if (i !== right) btns[i].classList.add("wrong");
+
+  const ok = i === right;
+  log.push({ q: q.q, ok });
+  if (ok) sc++;
+
+  const nb = document.getElementById("next-btn");
+  nb.textContent = qi === qs.length-1 ? "See my results" : "Next question";
+  nb.classList.add("show");
+
+  if (!ok) {
+    const box  = document.getElementById("exp-box");
+    const txt  = document.getElementById("exp-text");
+    const tag  = document.getElementById("exp-tag");
+    tag.textContent = style + " analogy";
+    box.classList.add("show");
+    txt.textContent = "Thinking…";
+
+    try {
+      await stream(
+        [{ role:"user", content:
+          `Using a ${style} analogy, briefly explain why "${q.options[right]}" is the answer to: ${q.q}\nNotes:\n${(q.ctx || notes).slice(0,2500)}` }],
+        t => { txt.textContent = t; }
+      );
+    } catch {
+      txt.textContent = "Correct answer: " + q.options[right];
+    }
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (!document.getElementById("s-quiz").classList.contains("active")) return;
+  if (e.target.matches("input,textarea")) return;
+  const nb = document.getElementById("next-btn");
+  if (e.key === "Enter" && nb.classList.contains("show")) { e.preventDefault(); nextQ(); return; }
+  const k = e.key.toLowerCase();
+  const i = "1234".indexOf(k) >= 0 ? "1234".indexOf(k) : "abcd".indexOf(k);
+  const b = document.querySelectorAll(".opt");
+  if (k.length === 1 && i >= 0 && b[i] && !b[i].disabled) b[i].click();
+});
+
+function nextQ() {
+  qi++;
+  if (qi >= qs.length) showResults();
+  else renderQ();
+}
+
+function showResults() {
+  document.getElementById("prog").style.width = "100%";
+  const total = qs.length;
+  document.getElementById("big-score").textContent = sc + "/" + total;
+  document.getElementById("score-msg").textContent =
+    sc === total ? "Perfect — you know this." :
+    sc >= total*.8 ? "Really solid." :
+    sc >= total*.6 ? "Getting there, keep going." : "More studying needed.";
+
+  const bd = document.getElementById("breakdown");
+  bd.innerHTML = "";
+  log.forEach((r, i) => {
+    const row = document.createElement("div");
+    row.className = "r-row";
+    const dot = document.createElement("div");
+    dot.className = "dot " + (r.ok ? "ok" : "bad");
+    const qt = document.createElement("div");
+    qt.className = "r-q";
+    qt.textContent = "Q" + (i+1) + " - " + r.q;
+    row.append(dot, qt);
+    bd.appendChild(row);
+  });
+
+  show("results");
+}
+
+function tryAgain() {
+  qi = 0; sc = 0; log = [];
+  show("loading");
+  loadQuestions(notes).then(q => {
+    qs = q;
+    renderQ();
+    show("quiz");
+  }).catch(e => {
+    show("results");
+    alert("Failed to generate new questions: " + e.message);
+  });
+}
+
+function goSetup() {
+  show("setup");
+  document.getElementById("start-btn").disabled = false;
+}
+
+const nIn = document.getElementById("i-notes"), sIn = document.getElementById("i-style");
+nIn.addEventListener("input", () => {
+  document.getElementById("cnt").textContent = nIn.value.length.toLocaleString();
+});
+function syncChips() {
+  document.querySelectorAll(".chip").forEach(c =>
+    c.classList.toggle("on", c.textContent === sIn.value.trim().toLowerCase()));
+}
+["football","cooking","minecraft","gym","movies","music"].forEach(n => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = n;
+  b.onclick = () => { sIn.value = n; syncChips(); };
+  document.getElementById("chips").appendChild(b);
+});
+sIn.addEventListener("input", syncChips);
+</script>
+</body>
+</html>
