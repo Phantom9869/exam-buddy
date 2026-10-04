@@ -100,6 +100,18 @@ document.documentElement.dataset.theme=t;})();
     .exp-tag{display:inline-block;font-size:14px;font-weight:700;margin-bottom:8px;
       background:linear-gradient(transparent 45%,var(--hl) 45%);padding:0 3px}
     .exp-text{white-space:pre-wrap}
+    .followup-wrap{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:none}
+    .followup-wrap.show{display:block}
+    .followup-log{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+    .fu-row{display:flex;flex-direction:column;gap:5px}
+    .fu-q{font-size:13px;font-weight:600;color:var(--muted)}
+    .fu-q::before{content:"Q: "}
+    .fu-a{font-size:14px;line-height:1.65;white-space:pre-wrap}
+    .followup-row{display:flex;gap:8px}
+    .followup-row input{flex:1;background:var(--card);border:1.5px solid var(--line);border-radius:8px;
+      color:var(--ink);font-family:inherit;font-size:14px;padding:9px 12px}
+    .followup-row input:focus{border-color:var(--ink)}
+    .fu-send{width:auto;padding:9px 18px;font-size:14px;flex:none}
 
     .next-btn{margin-top:22px;display:none}
     .next-btn.show{display:flex}
@@ -174,6 +186,13 @@ document.documentElement.dataset.theme=t;})();
   <div class="exp-box" id="exp-box">
     <div class="exp-tag" id="exp-tag"></div>
     <div class="exp-text" id="exp-text"></div>
+    <div class="followup-wrap" id="followup-wrap">
+      <div class="followup-log" id="followup-log"></div>
+      <div class="followup-row">
+        <input type="text" id="followup-input" placeholder="Still confused? Ask a follow-up…" />
+        <button class="btn fu-send" id="followup-send" onclick="askFollowup()">Ask</button>
+      </div>
+    </div>
   </div>
   <button class="btn next-btn" id="next-btn" onclick="nextQ()">Next question</button>
 </div>
@@ -226,29 +245,41 @@ async function chat(messages, asJson=false) {
   return (await r.json()).message.content;
 }
 
-async function stream(messages, onToken) {
-  const r = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, stream: true, messages })
-  });
+async function stream(messages, onToken, signal) {
+  let r;
+  try {
+    r = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: MODEL, stream: true, messages }),
+      signal
+    });
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    const err = new Error("Can't reach Ollama."); err.unreachable = true; throw err;
+  }
   if (!r.ok) throw new Error("Ollama error " + r.status);
   const reader = r.body.getReader();
   const dec = new TextDecoder();
   let full = "", buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop();
-    for (const line of lines.filter(Boolean)) {
-      try {
-        const c = JSON.parse(line);
-        if (c.message?.content) { full += c.message.content; onToken(full); }
-      } catch {}
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        try {
+          const c = JSON.parse(line);
+          if (c.message?.content) { full += c.message.content; onToken(full); }
+        } catch {}
+      }
     }
+  } catch (e) {
+    if (e.name !== "AbortError") throw e;
   }
+  return full;
 }
 
 function cleanJson(t) {
@@ -399,9 +430,19 @@ function renderQ() {
     ol.appendChild(b);
   });
 
+  cancelExplanation();
   document.getElementById("exp-box").classList.remove("show");
   document.getElementById("exp-text").textContent = "";
+  document.getElementById("followup-wrap").classList.remove("show");
+  document.getElementById("followup-log").innerHTML = "";
+  document.getElementById("followup-input").value = "";
   document.getElementById("next-btn").classList.remove("show");
+}
+
+let expAbort = null, explainHistory = [];
+
+function cancelExplanation() {
+  if (expAbort) { expAbort.abort(); expAbort = null; }
 }
 
 async function pick(i) {
@@ -429,17 +470,64 @@ async function pick(i) {
     box.classList.add("show");
     txt.textContent = "Thinking…";
 
+    cancelExplanation();
+    const ac = new AbortController();
+    expAbort = ac;
+
+    const baseMsg = { role:"user", content:
+      `Using a ${style} analogy, briefly explain why "${q.options[right]}" is the answer to: ${q.q}\nNotes:\n${(q.ctx || notes).slice(0,2500)}` };
+    explainHistory = [baseMsg];
+
     try {
-      await stream(
-        [{ role:"user", content:
-          `Using a ${style} analogy, briefly explain why "${q.options[right]}" is the answer to: ${q.q}\nNotes:\n${(q.ctx || notes).slice(0,2500)}` }],
-        t => { txt.textContent = t; }
-      );
-    } catch {
-      txt.textContent = "Correct answer: " + q.options[right];
+      const full = await stream([baseMsg], t => { txt.textContent = t; }, ac.signal);
+      if (ac.signal.aborted) return; // a newer question/explanation took over
+      explainHistory.push({ role: "assistant", content: full ?? txt.textContent });
+      document.getElementById("followup-wrap").classList.add("show");
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      txt.textContent = e.unreachable
+        ? "Can't reach Ollama — correct answer: " + q.options[right]
+        : "Correct answer: " + q.options[right];
     }
   }
 }
+
+async function askFollowup() {
+  const input = document.getElementById("followup-input");
+  const q = input.value.trim();
+  if (!q || !explainHistory.length) return;
+  input.value = "";
+  document.getElementById("followup-send").disabled = true;
+
+  const log = document.getElementById("followup-log");
+  const row = document.createElement("div");
+  row.className = "fu-row";
+  const qEl = document.createElement("div");
+  qEl.className = "fu-q"; qEl.textContent = q;
+  const aEl = document.createElement("div");
+  aEl.className = "fu-a"; aEl.textContent = "Thinking…";
+  row.append(qEl, aEl);
+  log.appendChild(row);
+  row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  explainHistory.push({ role: "user", content: q });
+  cancelExplanation();
+  const ac = new AbortController();
+  expAbort = ac;
+  try {
+    const full = await stream(explainHistory, t => { aEl.textContent = t; }, ac.signal);
+    if (ac.signal.aborted) return;
+    explainHistory.push({ role: "assistant", content: full ?? aEl.textContent });
+  } catch (e) {
+    if (!ac.signal.aborted) aEl.textContent = "Couldn't get an answer — try again.";
+  } finally {
+    document.getElementById("followup-send").disabled = false;
+  }
+}
+
+document.getElementById("followup-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); askFollowup(); }
+});
 
 document.addEventListener("keydown", e => {
   if (!document.getElementById("s-quiz").classList.contains("active")) return;
@@ -459,6 +547,7 @@ function nextQ() {
 }
 
 function showResults() {
+  cancelExplanation();
   document.getElementById("prog").style.width = "100%";
   const total = qs.length;
   document.getElementById("big-score").textContent = sc + "/" + total;
