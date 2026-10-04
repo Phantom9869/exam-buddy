@@ -657,22 +657,47 @@ async function pick(i) {
   if (!ok) await showExplanation(q.options[right], q);
 }
 
+const NON_ANSWERS = new Set([
+  "idk","i dont know","i don't know","dont know","don't know","no idea",
+  "not sure","unsure","skip","pass","n/a","na","none","no clue","?","."
+]);
+
+function isNonAnswer(text) {
+  const t = text.trim().toLowerCase().replace(/[.!?]+$/, "");
+  return t.length === 0 || NON_ANSWERS.has(t);
+}
+
 async function gradeWritten(q, userAnswer) {
-  const prompt = `You are grading a student's short-answer exam response.
+  // Guard: catch obvious non-answers locally — no model call needed, and no
+  // risk of a model contradicting its own feedback by scoring "idk" as passing.
+  if (isNonAnswer(userAnswer)) {
+    return {
+      score: 0,
+      feedback: "No real answer was given. Reference answer: " + q.answer
+    };
+  }
+
+  const prompt = `You are grading a student's short-answer exam response. Be strict and consistent — your score must match your own feedback.
 
 Question: ${q.q}
 Reference / ideal answer: ${q.answer}
-Student's answer: ${userAnswer || "(left blank)"}
+Student's answer: ${userAnswer}
 
 Notes (for context):
 ${(q.ctx || notes).slice(0, 2000)}
 
-Judge how correct the student's answer is compared to the reference answer and notes. Be reasonably lenient about wording — reward correct understanding even if phrased differently; don't require an exact match.
+Scoring guide:
+- 0-20: no real attempt, off-topic, or completely wrong
+- 21-50: an attempt, but mostly incorrect or missing the key point
+- 51-69: partially correct but missing something important
+- 70-100: correct and covers the key point(s) — wording may differ from the reference, that's fine
+
+Be reasonably lenient about wording — reward correct understanding even if phrased differently; don't require an exact match. But if your feedback describes the answer as wrong, vague, or showing no understanding, the score must be low (under 50) to match.
 
 Return ONLY valid JSON in this format:
-{"score": 0, "correct": false, "feedback": "1-2 sentence feedback on what was right and what was missing or wrong"}
+{"score": 0, "feedback": "1-2 sentence feedback on what was right and what was missing or wrong"}
 
-"score" is 0-100. "correct" should be true if score is 70 or higher.`;
+"score" is 0-100.`;
 
   for (let i = 0; i < 2; i++) {
     try {
@@ -682,7 +707,6 @@ Return ONLY valid JSON in this format:
       if (!Number.isFinite(score)) throw new Error("bad score field");
       return {
         score: Math.max(0, Math.min(100, score)),
-        correct: !!p.correct,
         feedback: String(p.feedback || "").trim() || "No feedback available."
       };
     } catch (e) {
@@ -715,12 +739,12 @@ async function submitWritten() {
     result = await gradeWritten(q, userAns);
   } catch (e) {
     result = {
-      score: 0, correct: false,
+      score: 0,
       feedback: e.unreachable ? "Can't reach Ollama to grade this." : "Couldn't grade this automatically."
     };
   }
 
-  const ok = result.correct || result.score >= 70;
+  const ok = result.score >= 70;
   log.push({ q: q.q, ok, picked: userAns || "(left blank)", correct: q.answer, score: result.score, type: "written" });
   if (ok) sc++; else wrongQs.push(q);
 
