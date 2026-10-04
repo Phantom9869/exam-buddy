@@ -6,11 +6,18 @@ A local AI-powered quiz tool that turns your study notes into multiple-choice qu
 
 ## ✨ Features
 
-- 📝 Generates 5 MCQs directly from your own notes, covering your entire notes file (long notes are split into parts, one part per quiz)
+- 📝 Generates MCQs directly from your own notes — choose 5, 10, or 15 questions per quiz
+- 📚 Covers your entire notes file: long notes are automatically split into parts, one part per quiz, so nothing gets left out
 - 🧠 Uses a local LLM (gemma3:4b via Ollama) — no API keys, no internet required
 - 🎯 Explains wrong answers using a custom analogy style (football, cooking, movies — anything)
-- 🔀 Answer options are shuffled every time, so there's no pattern to memorize
-- 🌗 Web UI with light/dark theme toggle, keyboard shortcuts (A–D / 1–4 to answer, Enter for next), and a live score tracker
+- 💬 Ask follow-up questions on any explanation that's still unclear — the chat keeps context from the original explanation
+- 🔁 Retry just the questions you missed, instantly, with answer options reshuffled — no new Ollama call needed
+- 🔀 Answer options are shuffled every time, so there's no position to memorize
+- 📊 Score history — your last 8 quiz attempts are saved locally so you can track progress over time
+- 💾 Remembers your notes, style, and question count between visits (stored only in your browser)
+- 📂 Upload a `.txt` file straight into the notes box, or paste
+- 📤 Export your results as a `.txt` file, or copy a summary to share with a friend
+- 🌗 Web UI with light/dark theme toggle and keyboard shortcuts (A–D or 1–4 to answer, Enter for next)
 - ⚡ Zero dependencies — the CLI uses only Python's built-in libraries; the web UI is a single HTML file
 
 ---
@@ -38,7 +45,7 @@ cd exam-buddy
 
 **3. Add your notes:**
 
-Replace `sample_notes.txt` with your own study notes, or use the included OS notes sample to try it out immediately.
+Replace `sample_notes.txt` with your own study notes, or use the included OS notes sample to try it out immediately. In the web UI you can also paste notes directly or upload a `.txt` file.
 
 **4. Run it — pick CLI or web:**
 
@@ -57,11 +64,12 @@ Then open **http://localhost:8000** in your browser (don't open `index.html` dir
 
 ## 🎮 How It Works
 
-1. The notes file is read (CLI) or pasted into the page (web UI)
-2. You pick an analogy style you want for mistake explanations (e.g. `cricket`, `cooking`, `Marvel movies`)
+1. The notes file is read (CLI) or pasted/uploaded into the page (web UI)
+2. You pick an explanation style (e.g. `cricket`, `cooking`, `Marvel movies`) and how many questions you want
 3. Your notes are sent to `gemma3:4b` running locally via Ollama
-4. You get 5 multiple-choice questions, one at a time, with shuffled options
-5. If you get one wrong, it explains the correct answer using your chosen analogy style
+4. You get multiple-choice questions, one at a time, with shuffled options
+5. If you get one wrong, it explains the correct answer using your chosen analogy style — and you can ask follow-up questions if it's still not clicking
+6. At the end you see your score, a full breakdown, and the option to retry just the questions you missed, save your results, or start a fresh quiz
 
 ```
 Explain mistakes in what style? cricket
@@ -98,8 +106,14 @@ exam-buddy/
 - [x] Custom analogy-style explanations
 - [x] Web UI (light/dark theme, keyboard shortcuts, shuffled answers)
 - [x] Full notes coverage via automatic chunking
-- [ ] Support for multiple notes files
-- [ ] Score history and progress tracking
+- [x] Follow-up Q&A on explanations
+- [x] Retry missed questions
+- [x] Score history
+- [x] Choice of question count
+- [x] Notes/style persistence + `.txt` upload
+- [x] Export results
+- [ ] Support for quizzing across multiple notes files at once
+- [ ] Difficulty levels (easy/medium/hard questions)
 - [ ] Export quiz as PDF
 
 ---
