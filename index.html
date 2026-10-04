@@ -500,7 +500,10 @@ async function loadQuestions(n) {
   const c = nextChunk(); const trimmed = c.text; setLoad(c);
   const prompt = buildQuizPrompt(trimmed);
 
-  const minOk = Math.max(3, Math.ceil(numQ * 0.6));
+  // A shorter-than-requested quiz is fine — the UI adapts to however many
+  // questions survive validation. Only reject a batch that's too thin to be
+  // a real quiz at all.
+  const minOk = 3;
   for (let i = 0; i < 3; i++) {
     try {
       const raw = await chat([{ role:"user", content: prompt }], true);
