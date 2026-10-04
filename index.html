@@ -441,27 +441,55 @@ function buildQuizPrompt(trimmed) {
   const mcqEx = `  {"type":"mcq","q":"What is the full question text?","options":["First full answer sentence","Second full answer sentence","Third full answer sentence","Fourth full answer sentence"],"answer":0}`;
   const writtenEx = `  {"type":"written","q":"What is the full open-ended question text?","answer":"A full-sentence ideal answer covering the key point(s)."}`;
 
-  let instruction, schema;
   if (qMode === "written") {
-    instruction = `write ${numQ} open-ended short-answer questions (no multiple choice)`;
-    schema = `{"questions":[\n${writtenEx}\n]}`;
-  } else if (qMode === "mixed") {
-    instruction = `write ${numQ} questions, roughly half multiple-choice and half open-ended short-answer, in any order`;
-    schema = `{"questions":[\n${mcqEx},\n${writtenEx}\n]}`;
-  } else {
-    instruction = `write ${numQ} multiple-choice questions`;
-    schema = `{"questions":[\n${mcqEx}\n]}`;
+    return `Using ONLY these notes, write ${numQ} open-ended short-answer questions.
+
+Return ONLY valid JSON in exactly this format, nothing else:
+{"questions":[
+${writtenEx}
+]}
+
+Rules:
+- "q" is the question text
+- "answer" is a short ideal answer in full sentences (1-2 sentences, no bullet points, no options array)
+- do not use double quotes inside "q" or "answer" — rephrase instead
+- base every question strictly on the notes below
+
+NOTES:
+${trimmed}`;
   }
 
-  return `Using ONLY these notes, ${instruction}.
+  if (qMode === "mixed") {
+    return `Using ONLY these notes, write ${numQ} questions, roughly half multiple-choice and half open-ended short-answer, in any order.
 
-Return ONLY valid JSON in exactly this format:
-${schema}
+Return ONLY valid JSON in exactly this format, nothing else:
+{"questions":[
+${mcqEx},
+${writtenEx}
+]}
 
 Rules:
 - every question object must include "type" ("mcq" or "written")
-- for "mcq" questions: options must be 4 complete sentences, never single letters like A/B/C/D; "answer" is the index (0-3) of the correct option
-- for "written" questions: "answer" is a short ideal answer in full sentences, no options array
+- for "mcq" questions: "options" must be 4 complete sentences, never single letters like A/B/C/D; "answer" is the index (0-3) of the correct option
+- for "written" questions: "answer" is a short ideal answer in full sentences (1-2 sentences), no options array
+- do not use double quotes inside any "q", "options", or "answer" text — rephrase instead
+- base every question strictly on the notes below
+
+NOTES:
+${trimmed}`;
+  }
+
+  return `Using ONLY these notes, write ${numQ} multiple-choice questions.
+
+Return ONLY valid JSON in exactly this format, nothing else:
+{"questions":[
+${mcqEx}
+]}
+
+Rules:
+- options must be complete sentences, never single letters like A/B/C/D
+- answer is the index (0-3) of the correct option
+- do not use double quotes inside "q" or "options" text — rephrase instead
 - base every question strictly on the notes below
 
 NOTES:
@@ -476,11 +504,18 @@ async function loadQuestions(n) {
   for (let i = 0; i < 3; i++) {
     try {
       const raw = await chat([{ role:"user", content: prompt }], true);
-      const p = JSON.parse(cleanJson(raw));
+      let p;
+      try {
+        p = JSON.parse(cleanJson(raw));
+      } catch (parseErr) {
+        console.warn("attempt", i+1, "- JSON parse failed. Raw response:", raw);
+        continue;
+      }
       const good = cleanQs(p.questions, c.text);
       if (good.length >= minOk) { part = { n: c.n, total: c.total }; return good; }
+      console.warn("attempt", i+1, "- parsed OK but only", good.length, "of", minOk, "needed valid. Parsed:", p.questions);
     } catch(e) {
-      console.warn("attempt", i+1, e);
+      console.warn("attempt", i+1, "- request failed:", e);
       if (e.unreachable) throw e; // no point retrying a dead connection
     }
   }
