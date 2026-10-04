@@ -47,6 +47,12 @@ document.documentElement.dataset.theme=t;})();
     textarea::placeholder,input::placeholder{color:#8C97AB}
     .hint{font-size:13px;color:var(--muted);margin-top:7px}
     .hint b{color:var(--ink);font-weight:600}
+    .notes-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .notes-row .hint{margin-top:7px;flex:1;min-width:220px}
+    .upload-btn{flex:none;font-family:inherit;font-size:12px;font-weight:600;color:var(--ink);
+      background:transparent;border:1.5px solid var(--line);border-radius:99px;padding:5px 14px;
+      cursor:pointer;margin-top:5px;transition:border-color .12s}
+    .upload-btn:hover{border-color:var(--ink)}
 
     .btn{
       display:flex;align-items:center;justify-content:center;width:100%;padding:14px 22px;
@@ -125,6 +131,19 @@ document.documentElement.dataset.theme=t;})();
     .dot{width:10px;height:10px;border-radius:50%;margin-top:8px;flex:none}
     .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
     .r-q{flex:1}
+    .r-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+    .result-actions{display:flex;gap:10px;margin-top:10px}
+    .btn.ghost.small{font-size:13px;padding:9px 14px;margin-top:0}
+
+    .history{margin-top:28px;display:none}
+    .history.show{display:block}
+    .history-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px}
+    .hist-clear{font-family:inherit;font-size:12px;font-weight:500;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline}
+    .hist-clear:hover{color:var(--ink)}
+    .history-list{display:flex;flex-direction:column;gap:6px}
+    .hist-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:7px}
+    .hist-score{font-weight:700;flex:none}
+    .hist-date{color:var(--muted)}
 
     .theme-btn{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;z-index:5;width:40px;height:40px;
       border-radius:50%;border:1.5px solid var(--ink);background:var(--card);color:var(--ink);
@@ -149,12 +168,16 @@ document.documentElement.dataset.theme=t;})();
 <div id="s-setup" class="screen active">
   <div class="wordmark">exam<em>buddy</em></div>
   <h1>Quiz yourself on<br>your own notes.</h1>
-  <p class="sub">Paste what you're studying, pick how you like things explained, and get a 5-question quiz — all on your laptop, nothing sent anywhere.</p>
+  <p class="sub">Paste what you're studying, pick how you like things explained, and get a quiz built from it — all on your laptop, nothing sent anywhere.</p>
 
   <div class="field">
     <label for="i-notes">Your notes</label>
     <textarea id="i-notes" placeholder="Paste your notes or textbook pages here…"></textarea>
-    <p class="hint"><span id="cnt">0</span> characters &middot; long notes are split into parts, one part per quiz. <b>Nothing leaves your device.</b></p>
+    <div class="notes-row">
+      <p class="hint"><span id="cnt">0</span> characters &middot; long notes are split into parts, one part per quiz. <b>Nothing leaves your device.</b></p>
+      <button type="button" class="upload-btn" id="upload-btn" onclick="document.getElementById('i-upload').click()">Upload .txt</button>
+      <input type="file" id="i-upload" accept=".txt,text/plain" hidden />
+    </div>
   </div>
 
   <div class="field">
@@ -164,8 +187,21 @@ document.documentElement.dataset.theme=t;})();
     <p class="hint">When you get something wrong, the explanation uses this theme — so it actually sticks.</p>
   </div>
 
+  <div class="field">
+    <label>Number of questions</label>
+    <div class="chips" id="count-chips"></div>
+  </div>
+
   <button class="btn" id="start-btn" onclick="startQuiz()">Generate my quiz</button>
   <div class="err" id="setup-err"></div>
+
+  <div class="history" id="history-wrap">
+    <div class="history-head">
+      <span>Recent scores</span>
+      <button type="button" class="hist-clear" id="hist-clear" onclick="clearHistory()">Clear</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
 </div>
 
 <!-- LOADING -->
@@ -203,7 +239,12 @@ document.documentElement.dataset.theme=t;})();
     <div class="big-score" id="big-score"></div>
     <p class="score-msg" id="score-msg"></p>
     <div class="breakdown" id="breakdown"></div>
-    <button class="btn"   onclick="tryAgain()">Try again with new questions</button>
+    <button class="btn" id="retry-missed-btn" onclick="retryMissed()" style="display:none">Retry missed questions</button>
+    <button class="btn ghost" onclick="tryAgain()">Try again with new questions</button>
+    <div class="result-actions">
+      <button class="btn ghost small" onclick="exportResults()">Download results</button>
+      <button class="btn ghost small" onclick="copyResults(this)">Copy summary</button>
+    </div>
     <button class="btn ghost" onclick="goSetup()">Change notes or style</button>
   </div>
 </div>
@@ -213,7 +254,8 @@ const API_URL = "http://localhost:11434/api/chat";
 const MODEL = "gemma3:4b";
 const LTRS  = ["A","B","C","D"];
 
-let qs = [], qi = 0, sc = 0, log = [], notes = "", style = "";
+let qs = [], qi = 0, sc = 0, log = [], notes = "", style = "", numQ = 5;
+let wrongQs = [], missedQs = [], retryMode = false;
 
 function toggleTheme() {
   const n = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
@@ -343,7 +385,7 @@ function setLoad(c) {
 
 async function loadQuestions(n) {
   const c = nextChunk(); const trimmed = c.text; setLoad(c);
-  const prompt = `Using ONLY these notes, write 5 multiple-choice questions.
+  const prompt = `Using ONLY these notes, write ${numQ} multiple-choice questions.
 
 Return ONLY valid JSON in exactly this format:
 {"questions":[
@@ -367,12 +409,13 @@ Rules:
 NOTES:
 ${trimmed}`;
 
+  const minOk = Math.max(3, Math.ceil(numQ * 0.6));
   for (let i = 0; i < 3; i++) {
     try {
       const raw = await chat([{ role:"user", content: prompt }], true);
       const p = JSON.parse(cleanJson(raw));
       const good = cleanQs(p.questions, c.text);
-      if (good.length >= 3) { part = { n: c.n, total: c.total }; return good; }
+      if (good.length >= minOk) { part = { n: c.n, total: c.total }; return good; }
     } catch(e) {
       console.warn("attempt", i+1, e);
       if (e.unreachable) throw e; // no point retrying a dead connection
@@ -396,6 +439,7 @@ async function startQuiz() {
   try {
     qs = await loadQuestions(notes);
     qi = 0; sc = 0; log = [];
+    retryMode = false; wrongQs = []; missedQs = [];
     renderQ();
     show("quiz");
   } catch(e) {
@@ -413,7 +457,9 @@ function renderQ() {
   const q = qs[qi];
   const pct = (qi / qs.length) * 100;
   document.getElementById("prog").style.width = pct + "%";
-  document.getElementById("q-num").textContent  = "Question " + (qi+1) + " of " + qs.length + "  \u00b7  " + sc + " correct" + (part.total > 1 ? "  \u00b7  notes part " + part.n + "/" + part.total : "");
+  document.getElementById("q-num").textContent = retryMode
+    ? "Retry " + (qi+1) + " of " + qs.length + " missed questions  \u00b7  " + sc + " correct"
+    : "Question " + (qi+1) + " of " + qs.length + "  \u00b7  " + sc + " correct" + (part.total > 1 ? "  \u00b7  notes part " + part.n + "/" + part.total : "");
   document.getElementById("q-text").textContent = q.q;
 
   const ol = document.getElementById("opts");
@@ -455,8 +501,8 @@ async function pick(i) {
   if (i !== right) btns[i].classList.add("wrong");
 
   const ok = i === right;
-  log.push({ q: q.q, ok });
-  if (ok) sc++;
+  log.push({ q: q.q, ok, picked: q.options[i], correct: q.options[right] });
+  if (ok) sc++; else wrongQs.push(q);
 
   const nb = document.getElementById("next-btn");
   nb.textContent = qi === qs.length-1 ? "See my results" : "Next question";
@@ -563,18 +609,133 @@ function showResults() {
     row.className = "r-row";
     const dot = document.createElement("div");
     dot.className = "dot " + (r.ok ? "ok" : "bad");
-    const qt = document.createElement("div");
-    qt.className = "r-q";
-    qt.textContent = "Q" + (i+1) + " - " + r.q;
-    row.append(dot, qt);
+    const col = document.createElement("div");
+    col.className = "r-q";
+    const qLine = document.createElement("div");
+    qLine.textContent = "Q" + (i+1) + " - " + r.q;
+    col.appendChild(qLine);
+    if (!r.ok) {
+      const sub = document.createElement("div");
+      sub.className = "r-sub";
+      sub.textContent = "You picked: " + r.picked + "  \u00b7  Correct: " + r.correct;
+      col.appendChild(sub);
+    }
+    row.append(dot, col);
     bd.appendChild(row);
   });
+
+  missedQs = wrongQs.slice();
+  wrongQs = [];
+  const rmBtn = document.getElementById("retry-missed-btn");
+  if (missedQs.length) {
+    rmBtn.style.display = "flex";
+    rmBtn.textContent = "Retry " + missedQs.length + " missed question" + (missedQs.length === 1 ? "" : "s");
+  } else {
+    rmBtn.style.display = "none";
+  }
+
+  saveHistoryEntry({ date: Date.now(), score: sc, total, style, retry: retryMode });
+  renderHistory();
 
   show("results");
 }
 
+function retryMissed() {
+  if (!missedQs.length) return;
+  retryMode = true;
+  qs = shuffle(missedQs).map(reshuffleQ);
+  qi = 0; sc = 0; log = [];
+  renderQ();
+  show("quiz");
+}
+
+function reshuffleQ(q) {
+  const correctText = q.options[q.answer];
+  const idx = shuffle([0, 1, 2, 3]);
+  const options = idx.map(i => q.options[i]);
+  return { ...q, options, answer: options.indexOf(correctText) };
+}
+
+function buildResultsText() {
+  const lines = [];
+  lines.push("Exam Buddy results \u2014 " + new Date().toLocaleString());
+  lines.push("Style: " + style);
+  lines.push("Score: " + sc + "/" + qs.length);
+  lines.push("");
+  log.forEach((r, i) => {
+    lines.push((i + 1) + ". " + r.q);
+    lines.push("   " + (r.ok ? "Correct" : "Wrong") +
+      " \u2014 you picked: " + r.picked + (r.ok ? "" : "  |  correct: " + r.correct));
+  });
+  return lines.join("\n");
+}
+
+function exportResults() {
+  const text = buildResultsText();
+  const blob = new Blob([text], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "exam-buddy-results-" + new Date().toISOString().slice(0, 10) + ".txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function copyResults(btn) {
+  const text = buildResultsText();
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = orig; }, 1400);
+    }
+  } catch {
+    alert("Couldn't copy automatically \u2014 here's your summary:\n\n" + text);
+  }
+}
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem("eb-history") || "[]"); } catch { return []; }
+}
+function saveHistoryEntry(entry) {
+  try {
+    const h = loadHistory();
+    h.unshift(entry);
+    localStorage.setItem("eb-history", JSON.stringify(h.slice(0, 20)));
+  } catch {}
+}
+function clearHistory() {
+  try { localStorage.removeItem("eb-history"); } catch {}
+  renderHistory();
+}
+function renderHistory() {
+  const wrap = document.getElementById("history-wrap");
+  const list = document.getElementById("history-list");
+  const h = loadHistory();
+  list.innerHTML = "";
+  if (!h.length) { wrap.classList.remove("show"); return; }
+  wrap.classList.add("show");
+  h.slice(0, 8).forEach(e => {
+    const row = document.createElement("div");
+    row.className = "hist-row";
+    const left = document.createElement("span");
+    left.className = "hist-date";
+    left.textContent = new Date(e.date).toLocaleDateString(undefined,
+      { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) +
+      (e.retry ? " \u00b7 retry" : "") + (e.style ? " \u00b7 " + e.style : "");
+    const right = document.createElement("span");
+    right.className = "hist-score";
+    right.textContent = e.score + "/" + e.total;
+    row.append(left, right);
+    list.appendChild(row);
+  });
+}
+
 function tryAgain() {
   qi = 0; sc = 0; log = [];
+  retryMode = false; wrongQs = []; missedQs = [];
   show("loading");
   loadQuestions(notes).then(q => {
     qs = q;
@@ -587,25 +748,72 @@ function tryAgain() {
 }
 
 function goSetup() {
+  retryMode = false; wrongQs = []; missedQs = [];
+  document.getElementById("retry-missed-btn").style.display = "none";
   show("setup");
   document.getElementById("start-btn").disabled = false;
 }
 
 const nIn = document.getElementById("i-notes"), sIn = document.getElementById("i-style");
-nIn.addEventListener("input", () => {
+
+function updateCount() {
   document.getElementById("cnt").textContent = nIn.value.length.toLocaleString();
-});
+}
+function persistNotes() { try { localStorage.setItem("eb-notes", nIn.value); } catch {} }
+function persistStyle() { try { localStorage.setItem("eb-style", sIn.value); } catch {} }
+
+nIn.addEventListener("input", () => { updateCount(); persistNotes(); });
+sIn.addEventListener("input", () => { syncChips(); persistStyle(); });
+
 function syncChips() {
-  document.querySelectorAll(".chip").forEach(c =>
+  document.querySelectorAll("#chips .chip").forEach(c =>
     c.classList.toggle("on", c.textContent === sIn.value.trim().toLowerCase()));
 }
 ["football","cooking","minecraft","gym","movies","music"].forEach(n => {
   const b = document.createElement("button");
   b.type = "button"; b.className = "chip"; b.textContent = n;
-  b.onclick = () => { sIn.value = n; syncChips(); };
+  b.onclick = () => { sIn.value = n; syncChips(); persistStyle(); };
   document.getElementById("chips").appendChild(b);
 });
-sIn.addEventListener("input", syncChips);
+
+function syncCountChips() {
+  document.querySelectorAll("#count-chips .chip").forEach(c =>
+    c.classList.toggle("on", Number(c.textContent) === numQ));
+}
+[5, 10, 15].forEach(n => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = n;
+  b.onclick = () => { numQ = n; syncCountChips(); try { localStorage.setItem("eb-numq", n); } catch {} };
+  document.getElementById("count-chips").appendChild(b);
+});
+
+document.getElementById("i-upload").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    nIn.value = String(reader.result || "");
+    updateCount(); persistNotes();
+  };
+  reader.onerror = () => showErr(document.getElementById("setup-err"), "Couldn't read that file.");
+  reader.readAsText(f);
+  e.target.value = "";
+});
+
+(function restoreSetup() {
+  try {
+    const n = localStorage.getItem("eb-notes");
+    const s = localStorage.getItem("eb-style");
+    const q = Number(localStorage.getItem("eb-numq"));
+    if (n) nIn.value = n;
+    if (s) sIn.value = s;
+    if (q === 5 || q === 10 || q === 15) numQ = q;
+  } catch {}
+  updateCount();
+  syncChips();
+  syncCountChips();
+  renderHistory();
+})();
 </script>
 </body>
 </html>
