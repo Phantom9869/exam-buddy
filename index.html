@@ -123,6 +123,15 @@ document.documentElement.dataset.theme=t;})();
     .next-btn.show{display:flex}
     .kb{margin-top:16px}
 
+    .written-area{display:flex;flex-direction:column;gap:10px}
+    .written-area textarea{min-height:110px}
+    .written-area textarea:disabled{opacity:.7}
+    .written-area .hint{margin-top:0}
+
+    .grade-verdict{font-size:14px;font-weight:700;margin-bottom:6px}
+    .grade-verdict.ok{color:var(--ok)}
+    .grade-verdict.bad{color:var(--bad)}
+
     .big-score{font-size:84px;font-weight:700;line-height:1;margin-bottom:10px;letter-spacing:-.03em;
       display:inline-block;background:linear-gradient(transparent 62%,var(--hl) 62%);padding:0 6px 0 2px}
     .score-msg{color:var(--muted);margin:8px 0 36px;font-size:18px}
@@ -134,6 +143,13 @@ document.documentElement.dataset.theme=t;})();
     .r-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
     .result-actions{display:flex;gap:10px;margin-top:10px}
     .btn.ghost.small{font-size:13px;padding:9px 14px;margin-top:0}
+
+    .stat-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+    .stat{flex:1;min-width:110px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+    .stat-label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+    .stat-val{display:block;font-size:19px;font-weight:700}
+    .score-bar{height:10px;background:var(--bad-bg);border-radius:5px;overflow:hidden;margin-bottom:26px}
+    .score-bar-fill{height:100%;background:var(--ok);border-radius:5px;transition:width .4s ease}
 
     .history{margin-top:28px;display:none}
     .history.show{display:block}
@@ -188,6 +204,11 @@ document.documentElement.dataset.theme=t;})();
   </div>
 
   <div class="field">
+    <label>Question type</label>
+    <div class="chips" id="type-chips"></div>
+  </div>
+
+  <div class="field">
     <label>Number of questions</label>
     <div class="chips" id="count-chips"></div>
   </div>
@@ -218,7 +239,16 @@ document.documentElement.dataset.theme=t;})();
   <div class="q-num"  id="q-num"></div>
   <div class="q-text" id="q-text"></div>
   <div class="options" id="opts"></div>
+  <div class="written-area" id="written-area" style="display:none">
+    <textarea id="written-input" placeholder="Type your answer here…"></textarea>
+    <p class="hint">Ctrl+Enter to submit.</p>
+    <button class="btn" id="written-submit" onclick="submitWritten()">Submit answer</button>
+  </div>
   <p class="hint kb">Press A–D (or 1–4) to answer, Enter for next.</p>
+  <div class="exp-box" id="grade-box">
+    <div class="grade-verdict" id="grade-verdict"></div>
+    <div class="exp-text" id="grade-feedback"></div>
+  </div>
   <div class="exp-box" id="exp-box">
     <div class="exp-tag" id="exp-tag"></div>
     <div class="exp-text" id="exp-text"></div>
@@ -238,6 +268,19 @@ document.documentElement.dataset.theme=t;})();
   <div class="results-inner">
     <div class="big-score" id="big-score"></div>
     <p class="score-msg" id="score-msg"></p>
+
+    <div class="stat-row">
+      <div class="stat"><span class="stat-label">Accuracy</span><span class="stat-val" id="stat-accuracy"></span></div>
+      <div class="stat"><span class="stat-label">Time</span><span class="stat-val" id="stat-time"></span></div>
+      <div class="stat"><span class="stat-label">Vs last</span><span class="stat-val" id="stat-delta"></span></div>
+    </div>
+    <div class="score-bar"><div class="score-bar-fill" id="score-bar-fill"></div></div>
+
+    <div class="exp-box" id="review-box">
+      <div class="exp-tag">What to review</div>
+      <div class="exp-text" id="review-text"></div>
+    </div>
+
     <div class="breakdown" id="breakdown"></div>
     <button class="btn" id="retry-missed-btn" onclick="retryMissed()" style="display:none">Retry missed questions</button>
     <button class="btn ghost" onclick="tryAgain()">Try again with new questions</button>
@@ -254,8 +297,8 @@ const API_URL = "http://localhost:11434/api/chat";
 const MODEL = "gemma3:4b";
 const LTRS  = ["A","B","C","D"];
 
-let qs = [], qi = 0, sc = 0, log = [], notes = "", style = "", numQ = 5;
-let wrongQs = [], missedQs = [], retryMode = false;
+let qs = [], qi = 0, sc = 0, log = [], notes = "", style = "", numQ = 5, qMode = "mcq";
+let wrongQs = [], missedQs = [], retryMode = false, quizStartTime = 0;
 
 function toggleTheme() {
   const n = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
@@ -368,12 +411,23 @@ function nextChunk() {
 function cleanQs(list, ctx) {
   if (!Array.isArray(list)) return [];
   return list.map(q => {
-    if (!q || typeof q.q !== "string" || !Array.isArray(q.options)) return null;
+    if (!q || typeof q.q !== "string") return null;
+    const declared = q.type === "written" ? "written" : q.type === "mcq" ? "mcq" : null;
+    const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
+    const type = declared || (hasOptions ? "mcq" : "written");
+
+    if (type === "written") {
+      const ans = String(q.answer ?? "").trim();
+      if (ans.length < 2) return null;
+      return { type: "written", q: q.q, answer: ans, ctx };
+    }
+
+    if (!hasOptions) return null;
     const opts = q.options.slice(0, 4).map(o => String(o).replace(/^\s*[A-Da-d][).:]\s+/, "").trim());
     const a = Number(q.answer);
     if (opts.length < 4 || opts.some(o => o.length < 2) || !Number.isInteger(a) || a < 0 || a > 3) return null;
     const idx = shuffle([0, 1, 2, 3]);
-    return { q: q.q, options: idx.map(i => opts[i]), answer: idx.indexOf(a), ctx };
+    return { type: "mcq", q: q.q, options: idx.map(i => opts[i]), answer: idx.indexOf(a), ctx };
   }).filter(Boolean);
 }
 
@@ -383,31 +437,40 @@ function setLoad(c) {
     "<br>30-60 seconds on CPU, hang tight.";
 }
 
-async function loadQuestions(n) {
-  const c = nextChunk(); const trimmed = c.text; setLoad(c);
-  const prompt = `Using ONLY these notes, write ${numQ} multiple-choice questions.
+function buildQuizPrompt(trimmed) {
+  const mcqEx = `  {"type":"mcq","q":"What is the full question text?","options":["First full answer sentence","Second full answer sentence","Third full answer sentence","Fourth full answer sentence"],"answer":0}`;
+  const writtenEx = `  {"type":"written","q":"What is the full open-ended question text?","answer":"A full-sentence ideal answer covering the key point(s)."}`;
+
+  let instruction, schema;
+  if (qMode === "written") {
+    instruction = `write ${numQ} open-ended short-answer questions (no multiple choice)`;
+    schema = `{"questions":[\n${writtenEx}\n]}`;
+  } else if (qMode === "mixed") {
+    instruction = `write ${numQ} questions, roughly half multiple-choice and half open-ended short-answer, in any order`;
+    schema = `{"questions":[\n${mcqEx},\n${writtenEx}\n]}`;
+  } else {
+    instruction = `write ${numQ} multiple-choice questions`;
+    schema = `{"questions":[\n${mcqEx}\n]}`;
+  }
+
+  return `Using ONLY these notes, ${instruction}.
 
 Return ONLY valid JSON in exactly this format:
-{"questions":[
-  {
-    "q": "What is the full question text?",
-    "options": [
-      "First full answer sentence",
-      "Second full answer sentence",
-      "Third full answer sentence",
-      "Fourth full answer sentence"
-    ],
-    "answer": 0
-  }
-]}
+${schema}
 
 Rules:
-- options must be complete sentences, never single letters like A/B/C/D
-- answer is the index (0-3) of the correct option
+- every question object must include "type" ("mcq" or "written")
+- for "mcq" questions: options must be 4 complete sentences, never single letters like A/B/C/D; "answer" is the index (0-3) of the correct option
+- for "written" questions: "answer" is a short ideal answer in full sentences, no options array
 - base every question strictly on the notes below
 
 NOTES:
 ${trimmed}`;
+}
+
+async function loadQuestions(n) {
+  const c = nextChunk(); const trimmed = c.text; setLoad(c);
+  const prompt = buildQuizPrompt(trimmed);
 
   const minOk = Math.max(3, Math.ceil(numQ * 0.6));
   for (let i = 0; i < 3; i++) {
@@ -440,6 +503,7 @@ async function startQuiz() {
     qs = await loadQuestions(notes);
     qi = 0; sc = 0; log = [];
     retryMode = false; wrongQs = []; missedQs = [];
+    quizStartTime = Date.now();
     renderQ();
     show("quiz");
   } catch(e) {
@@ -463,22 +527,39 @@ function renderQ() {
   document.getElementById("q-text").textContent = q.q;
 
   const ol = document.getElementById("opts");
-  ol.innerHTML = "";
-  q.options.forEach((opt, i) => {
-    const b = document.createElement("button");
-    b.className = "opt";
-    const l = document.createElement("span");
-    l.className = "opt-ltr"; l.textContent = LTRS[i];
-    const t = document.createElement("span");
-    t.textContent = opt;
-    b.append(l, t);
-    b.onclick = () => pick(i);
-    ol.appendChild(b);
-  });
+  const kb = document.querySelector(".kb");
+  const wArea = document.getElementById("written-area");
+  const wInput = document.getElementById("written-input");
+
+  if (q.type === "written") {
+    ol.innerHTML = ""; ol.style.display = "none";
+    kb.style.display = "none";
+    wArea.style.display = "flex";
+    wInput.value = ""; wInput.disabled = false;
+    document.getElementById("written-submit").disabled = false;
+    setTimeout(() => wInput.focus(), 50);
+  } else {
+    wArea.style.display = "none";
+    ol.style.display = "flex";
+    kb.style.display = "block";
+    ol.innerHTML = "";
+    q.options.forEach((opt, i) => {
+      const b = document.createElement("button");
+      b.className = "opt";
+      const l = document.createElement("span");
+      l.className = "opt-ltr"; l.textContent = LTRS[i];
+      const t = document.createElement("span");
+      t.textContent = opt;
+      b.append(l, t);
+      b.onclick = () => pick(i);
+      ol.appendChild(b);
+    });
+  }
 
   cancelExplanation();
   document.getElementById("exp-box").classList.remove("show");
   document.getElementById("exp-text").textContent = "";
+  document.getElementById("grade-box").classList.remove("show");
   document.getElementById("followup-wrap").classList.remove("show");
   document.getElementById("followup-log").innerHTML = "";
   document.getElementById("followup-input").value = "";
@@ -491,6 +572,36 @@ function cancelExplanation() {
   if (expAbort) { expAbort.abort(); expAbort = null; }
 }
 
+async function showExplanation(rightText, q) {
+  if (!style) return; // no explanation style set (written-only mode allows this)
+  const box = document.getElementById("exp-box");
+  const txt = document.getElementById("exp-text");
+  const tag = document.getElementById("exp-tag");
+  tag.textContent = style + " analogy";
+  box.classList.add("show");
+  txt.textContent = "Thinking…";
+
+  cancelExplanation();
+  const ac = new AbortController();
+  expAbort = ac;
+
+  const baseMsg = { role:"user", content:
+    `Using a ${style} analogy, briefly explain why "${rightText}" is the answer to: ${q.q}\nNotes:\n${(q.ctx || notes).slice(0,2500)}` };
+  explainHistory = [baseMsg];
+
+  try {
+    const full = await stream([baseMsg], t => { txt.textContent = t; }, ac.signal);
+    if (ac.signal.aborted) return; // a newer question/explanation took over
+    explainHistory.push({ role: "assistant", content: full ?? txt.textContent });
+    document.getElementById("followup-wrap").classList.add("show");
+  } catch (e) {
+    if (ac.signal.aborted) return;
+    txt.textContent = e.unreachable
+      ? "Can't reach Ollama — correct answer: " + rightText
+      : "Correct answer: " + rightText;
+  }
+}
+
 async function pick(i) {
   const q = qs[qi];
   const btns = document.querySelectorAll(".opt");
@@ -501,42 +612,97 @@ async function pick(i) {
   if (i !== right) btns[i].classList.add("wrong");
 
   const ok = i === right;
-  log.push({ q: q.q, ok, picked: q.options[i], correct: q.options[right] });
+  log.push({ q: q.q, ok, picked: q.options[i], correct: q.options[right], type: "mcq" });
   if (ok) sc++; else wrongQs.push(q);
 
   const nb = document.getElementById("next-btn");
   nb.textContent = qi === qs.length-1 ? "See my results" : "Next question";
   nb.classList.add("show");
 
-  if (!ok) {
-    const box  = document.getElementById("exp-box");
-    const txt  = document.getElementById("exp-text");
-    const tag  = document.getElementById("exp-tag");
-    tag.textContent = style + " analogy";
-    box.classList.add("show");
-    txt.textContent = "Thinking…";
+  if (!ok) await showExplanation(q.options[right], q);
+}
 
-    cancelExplanation();
-    const ac = new AbortController();
-    expAbort = ac;
+async function gradeWritten(q, userAnswer) {
+  const prompt = `You are grading a student's short-answer exam response.
 
-    const baseMsg = { role:"user", content:
-      `Using a ${style} analogy, briefly explain why "${q.options[right]}" is the answer to: ${q.q}\nNotes:\n${(q.ctx || notes).slice(0,2500)}` };
-    explainHistory = [baseMsg];
+Question: ${q.q}
+Reference / ideal answer: ${q.answer}
+Student's answer: ${userAnswer || "(left blank)"}
 
+Notes (for context):
+${(q.ctx || notes).slice(0, 2000)}
+
+Judge how correct the student's answer is compared to the reference answer and notes. Be reasonably lenient about wording — reward correct understanding even if phrased differently; don't require an exact match.
+
+Return ONLY valid JSON in this format:
+{"score": 0, "correct": false, "feedback": "1-2 sentence feedback on what was right and what was missing or wrong"}
+
+"score" is 0-100. "correct" should be true if score is 70 or higher.`;
+
+  for (let i = 0; i < 2; i++) {
     try {
-      const full = await stream([baseMsg], t => { txt.textContent = t; }, ac.signal);
-      if (ac.signal.aborted) return; // a newer question/explanation took over
-      explainHistory.push({ role: "assistant", content: full ?? txt.textContent });
-      document.getElementById("followup-wrap").classList.add("show");
+      const raw = await chat([{ role: "user", content: prompt }], true);
+      const p = JSON.parse(cleanJson(raw));
+      const score = Math.round(Number(p.score));
+      if (!Number.isFinite(score)) throw new Error("bad score field");
+      return {
+        score: Math.max(0, Math.min(100, score)),
+        correct: !!p.correct,
+        feedback: String(p.feedback || "").trim() || "No feedback available."
+      };
     } catch (e) {
-      if (ac.signal.aborted) return;
-      txt.textContent = e.unreachable
-        ? "Can't reach Ollama — correct answer: " + q.options[right]
-        : "Correct answer: " + q.options[right];
+      if (e.unreachable) throw e; // no point retrying a dead connection
+      if (i === 1) throw e;
     }
   }
 }
+
+async function submitWritten() {
+  const q = qs[qi];
+  const input = document.getElementById("written-input");
+  const userAns = input.value.trim();
+  const submitBtn = document.getElementById("written-submit");
+
+  input.disabled = true;
+  submitBtn.disabled = true;
+  cancelExplanation();
+
+  const gbox = document.getElementById("grade-box");
+  const gverdict = document.getElementById("grade-verdict");
+  const gfeedback = document.getElementById("grade-feedback");
+  gbox.classList.add("show");
+  gverdict.textContent = "Grading\u2026";
+  gverdict.className = "grade-verdict";
+  gfeedback.textContent = "";
+
+  let result;
+  try {
+    result = await gradeWritten(q, userAns);
+  } catch (e) {
+    result = {
+      score: 0, correct: false,
+      feedback: e.unreachable ? "Can't reach Ollama to grade this." : "Couldn't grade this automatically."
+    };
+  }
+
+  const ok = result.correct || result.score >= 70;
+  log.push({ q: q.q, ok, picked: userAns || "(left blank)", correct: q.answer, score: result.score, type: "written" });
+  if (ok) sc++; else wrongQs.push(q);
+
+  gverdict.textContent = result.score + "%  \u00b7  " + (ok ? "Correct" : "Needs work");
+  gverdict.className = "grade-verdict " + (ok ? "ok" : "bad");
+  gfeedback.textContent = result.feedback;
+
+  const nb = document.getElementById("next-btn");
+  nb.textContent = qi === qs.length - 1 ? "See my results" : "Next question";
+  nb.classList.add("show");
+
+  if (!ok) await showExplanation(q.answer, q);
+}
+
+document.getElementById("written-input").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitWritten(); }
+});
 
 async function askFollowup() {
   const input = document.getElementById("followup-input");
@@ -594,6 +760,7 @@ function nextQ() {
 
 function showResults() {
   cancelExplanation();
+  cancelReview();
   document.getElementById("prog").style.width = "100%";
   const total = qs.length;
   document.getElementById("big-score").textContent = sc + "/" + total;
@@ -601,6 +768,26 @@ function showResults() {
     sc === total ? "Perfect — you know this." :
     sc >= total*.8 ? "Really solid." :
     sc >= total*.6 ? "Getting there, keep going." : "More studying needed.";
+
+  const pct = Math.round(sc / total * 100);
+  document.getElementById("stat-accuracy").textContent = pct + "%";
+  document.getElementById("score-bar-fill").style.width = pct + "%";
+
+  const elapsedSec = Math.max(1, Math.round((Date.now() - quizStartTime) / 1000));
+  const mins = Math.floor(elapsedSec / 60), secs = elapsedSec % 60;
+  document.getElementById("stat-time").textContent = mins ? mins + "m " + secs + "s" : secs + "s";
+
+  const prevHist = loadHistory();
+  const deltaEl = document.getElementById("stat-delta");
+  if (!prevHist.length) {
+    deltaEl.textContent = "\u2014";
+    deltaEl.style.color = "";
+  } else {
+    const prevPct = Math.round(prevHist[0].score / prevHist[0].total * 100);
+    const diff = pct - prevPct;
+    deltaEl.textContent = (diff > 0 ? "+" : "") + diff + "%";
+    deltaEl.style.color = diff > 0 ? "var(--ok)" : diff < 0 ? "var(--bad)" : "";
+  }
 
   const bd = document.getElementById("breakdown");
   bd.innerHTML = "";
@@ -617,7 +804,10 @@ function showResults() {
     if (!r.ok) {
       const sub = document.createElement("div");
       sub.className = "r-sub";
-      sub.textContent = "You picked: " + r.picked + "  \u00b7  Correct: " + r.correct;
+      const label = r.type === "written" ? "You wrote: " : "You picked: ";
+      const refLabel = r.type === "written" ? "  \u00b7  Reference: " : "  \u00b7  Correct: ";
+      const scoreNote = r.type === "written" && Number.isFinite(r.score) ? "  (" + r.score + "%)" : "";
+      sub.textContent = label + r.picked + refLabel + r.correct + scoreNote;
       col.appendChild(sub);
     }
     row.append(dot, col);
@@ -634,22 +824,66 @@ function showResults() {
     rmBtn.style.display = "none";
   }
 
-  saveHistoryEntry({ date: Date.now(), score: sc, total, style, retry: retryMode });
+  saveHistoryEntry({ date: Date.now(), score: sc, total, style, mode: qMode, retry: retryMode });
   renderHistory();
+
+  generateReview(log.filter(r => !r.ok));
 
   show("results");
 }
 
+let reviewAbort = null;
+
+function cancelReview() {
+  if (reviewAbort) { reviewAbort.abort(); reviewAbort = null; }
+}
+
+async function generateReview(wrongLog) {
+  const box = document.getElementById("review-box");
+  const txt = document.getElementById("review-text");
+  cancelReview();
+  const ac = new AbortController();
+  reviewAbort = ac;
+
+  if (!wrongLog.length) {
+    box.classList.add("show");
+    txt.textContent = "No weak spots this round \u2014 nice work.";
+    return;
+  }
+
+  box.classList.add("show");
+  txt.textContent = "Thinking\u2026";
+
+  const missedList = wrongLog.map((r, i) => (i + 1) + ". " + r.q + " (your answer: " + r.picked + ")").join("\n");
+  const prompt = `A student just took a quiz on their notes and got these questions wrong:
+
+${missedList}
+
+Notes:
+${notes.slice(0, 3000)}
+
+In 3-5 short bullet points, tell the student which concepts to review and why, based on their mistakes. Be specific and concise. Do not repeat the questions verbatim — focus on the underlying concepts.`;
+
+  try {
+    await stream([{ role: "user", content: prompt }], t => { if (!ac.signal.aborted) txt.textContent = t; }, ac.signal);
+  } catch (e) {
+    if (!ac.signal.aborted) txt.textContent = "Couldn't generate a review summary right now.";
+  }
+}
+
 function retryMissed() {
   if (!missedQs.length) return;
+  cancelReview();
   retryMode = true;
   qs = shuffle(missedQs).map(reshuffleQ);
   qi = 0; sc = 0; log = [];
+  quizStartTime = Date.now();
   renderQ();
   show("quiz");
 }
 
 function reshuffleQ(q) {
+  if (q.type !== "mcq") return q;
   const correctText = q.options[q.answer];
   const idx = shuffle([0, 1, 2, 3]);
   const options = idx.map(i => q.options[i]);
@@ -659,13 +893,18 @@ function reshuffleQ(q) {
 function buildResultsText() {
   const lines = [];
   lines.push("Exam Buddy results \u2014 " + new Date().toLocaleString());
-  lines.push("Style: " + style);
-  lines.push("Score: " + sc + "/" + qs.length);
+  lines.push("Style: " + style + "   Mode: " + qMode);
+  lines.push("Score: " + sc + "/" + qs.length + " (" + Math.round(sc / qs.length * 100) + "%)");
   lines.push("");
   log.forEach((r, i) => {
     lines.push((i + 1) + ". " + r.q);
-    lines.push("   " + (r.ok ? "Correct" : "Wrong") +
-      " \u2014 you picked: " + r.picked + (r.ok ? "" : "  |  correct: " + r.correct));
+    if (r.type === "written") {
+      lines.push("   " + (r.ok ? "Correct" : "Needs work") + " (" + r.score + "%) \u2014 you wrote: " + r.picked);
+      if (!r.ok) lines.push("   reference answer: " + r.correct);
+    } else {
+      lines.push("   " + (r.ok ? "Correct" : "Wrong") +
+        " \u2014 you picked: " + r.picked + (r.ok ? "" : "  |  correct: " + r.correct));
+    }
   });
   return lines.join("\n");
 }
@@ -724,7 +963,7 @@ function renderHistory() {
     left.className = "hist-date";
     left.textContent = new Date(e.date).toLocaleDateString(undefined,
       { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) +
-      (e.retry ? " \u00b7 retry" : "") + (e.style ? " \u00b7 " + e.style : "");
+      (e.mode ? " \u00b7 " + e.mode : "") + (e.retry ? " \u00b7 retry" : "") + (e.style ? " \u00b7 " + e.style : "");
     const right = document.createElement("span");
     right.className = "hist-score";
     right.textContent = e.score + "/" + e.total;
@@ -734,11 +973,13 @@ function renderHistory() {
 }
 
 function tryAgain() {
+  cancelReview();
   qi = 0; sc = 0; log = [];
   retryMode = false; wrongQs = []; missedQs = [];
   show("loading");
   loadQuestions(notes).then(q => {
     qs = q;
+    quizStartTime = Date.now();
     renderQ();
     show("quiz");
   }).catch(e => {
@@ -748,6 +989,7 @@ function tryAgain() {
 }
 
 function goSetup() {
+  cancelReview();
   retryMode = false; wrongQs = []; missedQs = [];
   document.getElementById("retry-missed-btn").style.display = "none";
   show("setup");
@@ -787,6 +1029,17 @@ function syncCountChips() {
   document.getElementById("count-chips").appendChild(b);
 });
 
+function syncTypeChips() {
+  document.querySelectorAll("#type-chips .chip").forEach(c =>
+    c.classList.toggle("on", c.dataset.val === qMode));
+}
+[["mcq","Multiple choice"],["written","Written answers"],["mixed","Mixed"]].forEach(([val, label]) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = label; b.dataset.val = val;
+  b.onclick = () => { qMode = val; syncTypeChips(); try { localStorage.setItem("eb-qmode", val); } catch {} };
+  document.getElementById("type-chips").appendChild(b);
+});
+
 document.getElementById("i-upload").addEventListener("change", e => {
   const f = e.target.files[0];
   if (!f) return;
@@ -805,13 +1058,16 @@ document.getElementById("i-upload").addEventListener("change", e => {
     const n = localStorage.getItem("eb-notes");
     const s = localStorage.getItem("eb-style");
     const q = Number(localStorage.getItem("eb-numq"));
+    const m = localStorage.getItem("eb-qmode");
     if (n) nIn.value = n;
     if (s) sIn.value = s;
     if (q === 5 || q === 10 || q === 15) numQ = q;
+    if (m === "mcq" || m === "written" || m === "mixed") qMode = m;
   } catch {}
   updateCount();
   syncChips();
   syncCountChips();
+  syncTypeChips();
   renderHistory();
 })();
 </script>
